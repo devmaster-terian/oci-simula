@@ -201,8 +201,8 @@ def generar_examen():
     else:
         nombres_areas = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedad", "De lo Humano y lo Comunitario"]
     
-    examen_completo = []
-    preguntas_por_area_limite = max(1, limite_preguntas // len(nombres_areas))
+    todas_areas_nuevas = []
+    todas_areas_vistas = []
     
     for nombre_area in nombres_areas:
         area_obj = Area.query.filter(Area.nombre.ilike(f"%{nombre_area}%")).first()
@@ -228,27 +228,37 @@ def generar_examen():
             random.shuffle(preguntas_nuevas)
             random.shuffle(preguntas_vistas)
             
-            seleccion = []
+            todas_areas_nuevas.append(preguntas_nuevas)
+            todas_areas_vistas.append(preguntas_vistas)
+
+    seleccion = []
+    
+    # Lógica de round-robin para asegurar distribución y cubrir exactamente el límite
+    while len(seleccion) < limite_preguntas:
+        added_in_round = False
+        for i in range(len(todas_areas_nuevas)):
+            if len(seleccion) >= limite_preguntas:
+                break
+            if todas_areas_nuevas[i]:
+                seleccion.append(todas_areas_nuevas[i].pop(0))
+                added_in_round = True
+            elif todas_areas_vistas[i]:
+                seleccion.append(todas_areas_vistas[i].pop(0))
+                added_in_round = True
+        
+        if not added_in_round:
+            # Nos quedamos sin preguntas en todas las áreas solicitadas que cumplan el filtro
+            break
             
-            # 3. Lógica de selección limitando según configuración
-            seleccion.extend(preguntas_nuevas[:preguntas_por_area_limite])
-            
-            faltantes = preguntas_por_area_limite - len(seleccion)
-            if faltantes > 0:
-                seleccion.extend(preguntas_vistas[:faltantes])
-            
-            # 4. Formatear y marcar si es repetida
-            datos_area = []
-            for p in seleccion:
-                d = p.to_dict()
-                # Bandera para el Frontend: ¿Ya la dominó antes?
-                d['ya_respondida_bien'] = (p.id in ids_dominados)
-                random.shuffle(d['opciones'])
-                datos_area.append(d)
-                
-            examen_completo.extend(datos_area)
-            
-    # Último ajuste de shuffle y límite total por pequeños desfases de división
+    # Formatear y marcar
+    examen_completo = []
+    for p in seleccion:
+        d = p.to_dict()
+        # Bandera para el Frontend: ¿Ya la dominó antes?
+        d['ya_respondida_bien'] = (p.id in ids_dominados)
+        random.shuffle(d['opciones'])
+        examen_completo.append(d)
+        
     random.shuffle(examen_completo)
     examen_completo = examen_completo[:limite_preguntas]
     
@@ -256,6 +266,46 @@ def generar_examen():
         return jsonify({"error": "No hay suficientes preguntas"}), 404
         
     return jsonify(examen_completo)
+
+@app.route('/pregunta-reemplazo', methods=['POST'])
+def obtener_pregunta_reemplazo():
+    data = request.json
+    area_nombre = data.get('area', 'Genérica')
+    excluir_ids = data.get('excluir_ids', [])
+    
+    conf = Configuracion.query.first()
+    filtro = conf.filtro_referencia if conf else 'con_referencia'
+    
+    query = Reactivo.query
+    if area_nombre != 'Genérica':
+        area_obj = Area.query.filter(Area.nombre.ilike(f"%{area_nombre}%")).first()
+        if area_obj:
+            query = query.filter_by(area_id=area_obj.id)
+            
+    if filtro == 'con_referencia':
+        query = query.filter(Reactivo.referencia.isnot(None), Reactivo.referencia != '', Reactivo.reportado == False)
+    elif filtro == 'sin_referencia':
+        query = query.filter((Reactivo.referencia.is_(None)) | (Reactivo.referencia == ''), Reactivo.reportado == False)
+    else:
+        query = query.filter(Reactivo.reportado == False)
+        
+    if excluir_ids:
+        query = query.filter(~Reactivo.id.in_(excluir_ids))
+        
+    preguntas_disponibles = query.all()
+    if not preguntas_disponibles:
+        # Intenta sin importar el modulo
+        query_fallback = Reactivo.query.filter(~Reactivo.id.in_(excluir_ids), Reactivo.reportado == False)
+        preguntas_disponibles = query_fallback.all()
+        if not preguntas_disponibles:
+             return jsonify({"error": "No hay mas preguntas"}), 404
+        
+    seleccionada = random.choice(preguntas_disponibles)
+    d = seleccionada.to_dict()
+    d['ya_respondida_bien'] = False
+    random.shuffle(d['opciones'])
+    
+    return jsonify(d), 200
 
 @app.route('/guardar-resultado', methods=['POST'])
 def guardar_resultado():

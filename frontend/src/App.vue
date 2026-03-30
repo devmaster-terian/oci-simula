@@ -80,7 +80,9 @@ const totalAciertos = computed(() => {
 
 const porcentajeGlobal = computed(() => {
   if (examen.value.length === 0) return 0
-  return Math.round((totalAciertos.value / examen.value.length) * 100)
+  const totalReportadas = preguntasReportadasEnSesion.value.length || 0
+  const den = Math.max(1, examen.value.length - totalReportadas)
+  return Math.round((totalAciertos.value / den) * 100)
 })
 
 const tiempoFormateado = computed(() => {
@@ -91,13 +93,24 @@ const tiempoFormateado = computed(() => {
 
 const porcentajeAvance = computed(() => {
   if (!examen.value || examen.value.length === 0) return 0
-  return Math.round((indiceRespondidos.value.length / examen.value.length) * 100)
+  const totalReportadas = preguntasReportadasEnSesion.value.length || 0
+  const den = Math.max(1, examen.value.length - totalReportadas)
+  const respuestasEfectivas = Math.max(0, indiceRespondidos.value.length - totalReportadas)
+  return Math.round((respuestasEfectivas / den) * 100)
 })
 
 // Función para renderizar LaTeX en la vista de revisión
 const renderizarTexto = (texto) => {
   if (!texto) return ''
-  return texto.replace(/\$(.*?)\$/g, (match, formula) => {
+  
+  // Limpieza preventiva para comandos matemáticos huérfanos por colisión del símbolo $ (ej. $10 pesos)
+  let textoLimpio = texto
+    .replace(/\\times/g, '×')
+    .replace(/\\approx/g, '≈')
+    .replace(/\\pi/g, 'π')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2');
+
+  return textoLimpio.replace(/\$(.*?)\$/g, (match, formula) => {
     try {
       return katex.renderToString(formula, { throwOnError: false, displayMode: false })
     } catch (e) { return match }
@@ -486,10 +499,33 @@ const solicitarMasTiempo = () => {
   guardarEstado();
 }
 
-const registrarPreguntaReportada = (preguntaId) => {
+const registrarPreguntaReportada = async (preguntaId) => {
   if (!preguntasReportadasEnSesion.value.includes(preguntaId)) {
     preguntasReportadasEnSesion.value.push(preguntaId);
   }
+  
+  if (!indiceRespondidos.value.includes(indiceActual.value)) {
+    indiceRespondidos.value.push(indiceActual.value);
+  }
+  preguntasGuardadas.value = preguntasGuardadas.value.filter(i => i !== indiceActual.value);
+  
+  try {
+    const idsActuales = examen.value.map(p => p.id);
+    const res = await axios.post('/api/pregunta-reemplazo', {
+      area: reactivoActual.value.area,
+      excluir_ids: idsActuales
+    });
+    if (res.data && res.data.id) {
+      examen.value.push(res.data);
+    }
+  } catch (e) {
+    console.error("No se pudo obtener una pregunta de reemplazo:", e);
+  }
+
+  mostrarRetroalimentacion.value = false;
+  respuestaSeleccionada.value = null;
+  
+  avanzarSiguiente();
 }
 
 const guardarParaDespues = () => {
@@ -800,7 +836,7 @@ const guardarConfigAdmin = async () => {
             </div>
           </div>
           <div class="font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-1 md:px-3 md:py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-800 text-center transition-colors">
-            <span class="text-sm md:text-base">{{ indiceRespondidos.length }} / {{ examen.length }}</span><br><span class="text-[9px] md:text-[10px] font-normal uppercase tracking-wide">Contestadas</span>
+            <span class="text-sm md:text-base">{{ Math.max(0, indiceRespondidos.length - preguntasReportadasEnSesion.length) }} / {{ Math.max(1, examen.length - preguntasReportadasEnSesion.length) }}</span><br><span class="text-[9px] md:text-[10px] font-normal uppercase tracking-wide">Contestadas</span>
           </div>
         </div>
         <TarjetaReactivo v-if="reactivoActual" :pregunta="reactivoActual" :numero="indiceActual + 1"
@@ -814,16 +850,16 @@ const guardarConfigAdmin = async () => {
         </div>
 
         <div v-if="mostrarRetroalimentacion"
-          class="fixed bottom-0 left-0 right-0 bg-white border-t-8 p-6 shadow-2xl animate-slide-up z-50">
+          class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t-8 border-t-indigo-500/10 dark:border-t-slate-700 p-6 shadow-2xl animate-slide-up z-50 transition-colors">
           <div class="max-w-3xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
             <div class="text-left flex-1">
-              <h3 class="text-2xl font-black mb-2"
-                :class="respuestaSeleccionada.es_correcta ? 'text-green-600' : 'text-orange-600'">{{
+              <h3 class="text-2xl font-black mb-2 transition-colors"
+                :class="respuestaSeleccionada.es_correcta ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">{{
                   respuestaSeleccionada.es_correcta ? '¡Correcto!' : 'Incorrecto' }}</h3>
-              <p class="text-gray-700 text-lg">{{ reactivoActual.retroalimentacion }}</p>
+              <p class="text-gray-700 dark:text-gray-300 text-lg transition-colors" v-html="renderizarTexto(reactivoActual.retroalimentacion)"></p>
             </div>
             <button @click="avanzarSiguiente"
-              class="bg-indigo-600 text-white px-8 py-4 rounded-xl font-black">Siguiente</button>
+              class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-xl font-black transition-colors shadow-lg shadow-indigo-500/30">Siguiente</button>
           </div>
         </div>
 

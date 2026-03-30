@@ -2,6 +2,7 @@
 import { defineProps, defineEmits, ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import katex from 'katex'
 import axios from 'axios'
+import iconosAreas from '../assets/iconos_areas.json'
 
 const props = defineProps({
   pregunta: Object,
@@ -122,6 +123,19 @@ const obtenerEstiloArea = (nombreArea) => {
   return { header: 'bg-indigo-600', border: 'border-indigo-100' }
 }
 
+const obtenerIconoArea = (nombreArea) => {
+  if (!nombreArea) return 'fa-solid fa-cube'
+  // Buscar coincidencia exacta o que contenga el nombre
+  for (const [key, icono] of Object.entries(iconosAreas)) {
+    if (nombreArea.toLowerCase().includes(key.toLowerCase())) {
+      return icono
+    }
+  }
+  return 'fa-solid fa-cube'
+}
+
+
+
 const obtenerClaseOpcion = (opcion) => {
   if (!respondido.value) return `border-gray-200 dark:border-slate-700/50 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-slate-700 cursor-pointer`
   
@@ -158,7 +172,7 @@ onUnmounted(() => darkObserver?.disconnect())
       :class="obtenerEstiloArea(pregunta.area).header">
       <div class="flex items-center gap-1.5 md:gap-2 overflow-hidden">
         <span class="font-black text-xs md:text-base tracking-wide uppercase truncate max-w-[120px] md:max-w-none">
-          <i class="fa-solid fa-shapes mr-1 md:mr-1.5"></i> {{ pregunta.area || 'Pregunta' }}
+          <i :class="[obtenerIconoArea(pregunta.area), 'mr-1 md:mr-1.5']"></i> {{ pregunta.area || 'Pregunta' }}
         </span>
 
         <div v-if="pregunta.ya_respondida_bien"
@@ -267,24 +281,24 @@ onUnmounted(() => darkObserver?.disconnect())
   </div>
     <!-- Modal de Referencia y Reporte -->
     <div v-if="mostrarModalReferencia" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6">
+      <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 transition-colors duration-300 border dark:border-slate-700">
         <div class="flex justify-between items-start mb-4">
-          <h3 class="text-xl font-bold text-gray-800">
+          <h3 class="text-xl font-bold text-gray-800 dark:text-white transition-colors">
             <i class="fa-solid fa-book text-indigo-500 mr-2"></i> Origen de la pregunta
           </h3>
-          <button @click="mostrarModalReferencia = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <button @click="mostrarModalReferencia = false" class="text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors">
             <i class="fa-solid fa-times text-xl"></i>
           </button>
         </div>
         
-        <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-6">
-          <div class="mb-2">
+        <div class="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50 mb-6 transition-colors">
+          <div class="mb-2 w-full overflow-hidden">
             <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Referencia del libro</span>
-            <p class="text-gray-800 font-medium mt-1">{{ pregunta.referencia || 'No disponible' }}</p>
+            <p class="text-gray-800 dark:text-gray-200 font-medium mt-1 break-all transition-colors">{{ pregunta.referencia || 'No disponible' }}</p>
           </div>
           <div>
             <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Página</span>
-            <p class="text-gray-800 font-medium mt-1">{{ pregunta.pagina || 'No disponible' }}</p>
+            <p class="text-gray-800 dark:text-gray-200 font-medium mt-1 transition-colors">{{ pregunta.pagina || 'No disponible' }}</p>
           </div>
           <div v-if="pregunta.referencia" class="mt-4">
             <button @click="mostrarPdf = true; mostrarModalReferencia = false"
@@ -295,8 +309,8 @@ onUnmounted(() => darkObserver?.disconnect())
           </div>
         </div>
 
-        <div class="border-t pt-4">
-          <p class="text-sm text-gray-500 mb-3">
+        <div class="border-t dark:border-slate-700 pt-4 transition-colors">
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-3 transition-colors">
             Si consideras que hay un error en esta pregunta (en la respuesta o planteamiento), puedes reportarla para revisión manual.
           </p>
           <div class="flex flex-col gap-2">
@@ -304,7 +318,7 @@ onUnmounted(() => darkObserver?.disconnect())
               @click="reportarPregunta"
               :disabled="reportando || reporteExitoso"
               class="w-full py-2.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
-              :class="reporteExitoso ? 'bg-green-100 text-green-700' : 'bg-red-100 hover:bg-red-200 text-red-700'">
+              :class="reporteExitoso ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-800/50 text-red-700 dark:text-red-400'">
               <i v-if="reportando" class="fa-solid fa-spinner fa-spin"></i>
               <i v-else-if="reporteExitoso" class="fa-solid fa-check"></i>
               <i v-else class="fa-solid fa-flag"></i>
@@ -312,7 +326,7 @@ onUnmounted(() => darkObserver?.disconnect())
             </button>
             <button 
               @click="mostrarModalReferencia = false"
-              class="w-full py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors shadow-sm">
+              class="w-full py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-gray-200 transition-colors shadow-sm">
               Cerrar
             </button>
           </div>
